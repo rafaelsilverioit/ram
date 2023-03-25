@@ -29,6 +29,11 @@ Rafael Amaral (R.A.M) is a command line utility tool to manage multiple git repo
 
 __________________
 
+### Installation
+
+Clone the repository, install all dependencies with pip `pip3 install -r requirements.txt`, give the script execution permissions `chmod 755 ram` and add it permanently to your $PATH `echo 'export PATH="/path/to/repository:$PATH"' >> ~/.bashrc && source ~/.bashrc`.
+__________________
+
 ### License
 
 Read the license [here](LICENSE).
