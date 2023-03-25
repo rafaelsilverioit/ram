@@ -42,4 +42,4 @@ __________________
 
 ### Contact information
 
-If you have any questions, contact-me at Telegram: @realngnx
+If you have any questions, or suggestions or want to contribute, dont hesitate to contact-me at Telegram: @realngnx
