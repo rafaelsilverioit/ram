@@ -1,0 +1,2 @@
+colored==1.4.4
+GitPython==3.1.31

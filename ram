@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import re
+import git
+import argparse
+from colored import fg, attr, stylize
+from git import Repo
+
+parser = argparse.ArgumentParser(prog='ram', description='Utility tool to manage multiple git repositories at once',
+                                 epilog='Rafael Amaral - Telegram: @realngnx ')
+parser.add_argument('-r', '--root', help='Root directory where repositories are located', metavar='DIRECTORY',
+                    required=True, default=False)
+parser.add_argument('-c', '--checkout', help='Switches every repository to a given branch if it exists',
+                    metavar='BRANCH', required=False, default=False)
+parser.add_argument('-b', '--branches', help='Lists all checked out branches', required=False, default=False,
+                    action='store_true')
+parser.add_argument('-d', '--delete', help='Deletes a given branch both locally and remotely from every repository if'
+                                           ' it exists', metavar='BRANCH', required=False, default=False)
+
+args = parser.parse_args()
+conf = vars(args)
+
+projects = map(lambda it: f'{conf["root"]}/{it}', os.listdir(conf['root']))
+projects = list(projects)
+projects = filter(lambda it: is_valid_git_repo(it), projects)
+
+
+def is_valid_git_repo(path):
+    try:
+        _ = Repo(path).git_dir
+        return True
+    except git.exc.InvalidGitRepositoryError:
+        return False
+
+
+def sort_by_changes(row):
+    return row[2]
+
+
+def git_repositories_states():
+    data = []
+
+    for project in projects:
+        name = normalize(os.path.basename(project))
+        repo = Repo(project)
+
+        # noinspection PyBroadException
+        try:
+
+            untracked = repo.untracked_files
+            diff = repo.index.diff(None)
+            changes = len(untracked) + len(diff)
+            origin = 'origin/%s..HEAD' % repo.active_branch.name
+            unpushed = len(re.findall(r'^[a-zA-Z0-9]{7}', repo.git.log(origin, oneline=True), re.MULTILINE))
+
+            if changes == 0 and unpushed == 0:
+                status = normalize('clean')
+                color = fg(2)
+            else:
+                status = '%s change(s)' % changes if changes > 0 else '%s unpushed' % unpushed
+                status = normalize(status)
+                color = fg(9)
+
+            branch = normalize(repo.active_branch.name)
+            colored_status = '%s%s%s' % (color, status, attr('reset'))
+            data.append([name, get_colored_branch_name(branch), colored_status])
+        except Exception:
+            data.append([name, get_colored_branch_name(normalize(repo.active_branch.name)), normalize('detached')])
+
+    data.sort(key=sort_by_changes)
+    data.insert(0, [normalize('PROJECT'), normalize('BRANCH'), normalize('STATUS')])
+
+    for row in data:
+        print("{}{}{}".format(*row))
+
+
+def get_colored_branch_name(branch):
+    branch_color = fg(15) if branch in ('master', 'main') else fg(12)
+    return '%s%s%s' % (branch_color, branch, attr('reset'))
+
+
+def normalize(string, width=64):
+    return string.ljust(width, ' ')
+
+
+def git_checkout(to):
+    for project in projects:
+        repo = Repo(project)
+        # noinspection PyBroadException
+        try:
+            repo.git.checkout(to)
+        except Exception:
+            pass
+
+
+def git_branches():
+    for project in projects:
+        repo = Repo(project)
+        # noinspection PyBroadException
+        try:
+            fancy_project_name = '%s' % stylize(os.path.basename(project), fg(4) + attr('bold'))
+            print(f"[{normalize(fancy_project_name, 16)}] Branches found:")
+            for head in repo.heads:
+                print(stylize(head.name, fg(3)))
+            print()
+        except Exception:
+            pass
+
+
+def git_delete_branches(target):
+    for project in projects:
+        repo = Repo(project)
+        try:
+            remote = repo.remote()
+            fancy_project_name = '%s' % stylize(os.path.basename(project), fg(4) + attr('bold'))
+            delete_branch(repo, remote, target, fancy_project_name)
+            delete_branch(repo, remote, target, fancy_project_name, local=False)
+        except Exception as e:
+            print(e)
+
+
+def delete_branch(repo, remote, reference, project_name, local=True):
+    prefix = f'[{normalize(project_name, 16)}] {"Local" if local else "Remote"} branch {stylize(reference, fg(2))}'
+    try:
+        if local:
+            for head in repo.heads:
+                if reference == head.name:
+                    repo.delete_head(repo.heads[reference])
+                    print(f'{prefix} deleted')
+                    return
+
+        # Doing this to avoid potentially missing remote branches as we might want to remove branches in batches
+        # (it is common for teams to use the same branch name across multiple repositories when they are part
+        # of the same feature).
+        # What other options do we have to discover remote repositories without having to fetch/pull?
+        remote.fetch()
+        refs = [ref.name for ref in remote.refs]
+        if f'origin/{reference}' in refs:
+            remote.push(refspec=f':{reference}')
+            print(f'{prefix} deleted')
+    except Exception as e:
+        print(f'{prefix} could not be deleted: {e}')
+
+
+if conf['checkout']:
+    git_checkout(conf['checkout'])
+elif conf['branches']:
+    git_branches()
+elif conf['delete']:
+    git_delete_branches(conf['delete'])
+else:
+    git_repositories_states()
